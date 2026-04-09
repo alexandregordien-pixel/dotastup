@@ -32,6 +32,10 @@ function getCurrentService() {
   return getServices().find((service) => service.id === state.serviceId);
 }
 
+function getProductById(productId) {
+  return getCurrentService().products.find((product) => product.id === productId);
+}
+
 function formatDate(date) {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -231,6 +235,15 @@ function render() {
                 </div>
                 <div class="pill">${product.totalQuantity} ${escapeHtml(product.unitLabel)}</div>
                 <label class="remaining-input">
+                  <button
+                    type="button"
+                    class="step-button"
+                    data-action="decrement-requested"
+                    data-product-id="${product.id}"
+                    aria-label="Retirer une unite pour ${escapeHtml(product.label)}"
+                  >
+                    -
+                  </button>
                   <input
                     type="number"
                     min="0"
@@ -241,7 +254,15 @@ function render() {
                     data-product-id="${product.id}"
                     aria-label="Quantite commandee pour ${escapeHtml(product.label)}"
                   />
-                  <span>${escapeHtml(product.unitLabel)}</span>
+                  <button
+                    type="button"
+                    class="step-button"
+                    data-action="increment-requested"
+                    data-product-id="${product.id}"
+                    aria-label="Ajouter une unite pour ${escapeHtml(product.label)}"
+                  >
+                    +
+                  </button>
                 </label>
                 <div class="request-value ${invalid ? 'is-invalid' : ''}">
                   ${
@@ -441,7 +462,9 @@ function drawCheckMark(page, rect, font) {
 }
 
 async function buildRequestPdf(templateBytes, service, entries, dateText) {
-  const templatePdf = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
+  const templateBytesForForm = templateBytes.slice(0);
+  const templateBytesForPreview = templateBytes.slice(0);
+  const templatePdf = await PDFDocument.load(templateBytesForForm, { ignoreEncryption: true });
   const form = templatePdf.getForm();
   const fields = form.getFields();
 
@@ -461,7 +484,7 @@ async function buildRequestPdf(templateBytes, service, entries, dateText) {
   const pdfjsLib = await import('/node_modules/pdfjs-dist/legacy/build/pdf.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs';
   const loadingTask = pdfjsLib.getDocument({
-    data: templateBytes,
+    data: templateBytesForPreview,
     password: '',
     disableWorker: true,
   });
@@ -689,6 +712,22 @@ document.addEventListener('click', (event) => {
   if (action === 'reset-state') {
     resetState();
     render();
+    return;
+  }
+
+  if (action === 'increment-requested' || action === 'decrement-requested') {
+    const product = getProductById(target.dataset.productId);
+    if (!product) return;
+
+    const currentRaw = state.requestedByProductId[product.id] ?? '';
+    const currentValue = currentRaw === '' ? 0 : Number(currentRaw);
+    const safeValue = Number.isNaN(currentValue) ? 0 : currentValue;
+    const delta = action === 'increment-requested' ? 1 : -1;
+    const nextValue = Math.min(product.totalQuantity, Math.max(0, safeValue + delta));
+
+    state.requestedByProductId[product.id] = String(nextValue);
+    state.selectedByProductId[product.id] = nextValue > 0;
+    render();
   }
 });
 
@@ -703,7 +742,9 @@ function handleInputStateChange(event) {
   }
 
   if (target.dataset.action === 'update-requested') {
-    state.requestedByProductId[target.dataset.productId] = target.value;
+    const { productId } = target.dataset;
+    state.requestedByProductId[productId] = target.value;
+    state.selectedByProductId[productId] = target.value !== '';
     render();
   }
 }

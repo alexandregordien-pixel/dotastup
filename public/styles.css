@@ -294,20 +294,45 @@ h3 {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 16px;
   background: var(--surface-strong);
   border: 1px solid var(--line);
+  min-height: 56px;
+}
+
+.step-button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(23, 114, 69, 0.2);
+  border-radius: 12px;
+  background: white;
+  color: var(--accent);
+  font: inherit;
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .remaining-input input {
-  width: 100%;
+  width: 72px;
   border: 0;
   background: transparent;
   color: var(--ink);
   font: inherit;
   font-weight: 700;
+  font-size: 1.08rem;
+  min-height: 32px;
   outline: none;
+  text-align: center;
+}
+
+.remaining-input input::-webkit-outer-spin-button,
+.remaining-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .remaining-input span {
