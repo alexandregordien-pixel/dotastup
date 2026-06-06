@@ -2,7 +2,10 @@ const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
 
 const state = {
   serviceId: 'neurochir',
+  requestMode: 'renewal',
+  patientName: '',
   requestedByProductId: {},
+  posologieByProductId: {},
   selectedByProductId: {},
   isGenerating: false,
   generatedDocs: [],
@@ -12,6 +15,7 @@ const state = {
 
 const formFieldMap = {
   renewalCheckboxIndex: 0,
+  nominativeCheckboxIndex: 2,
   serviceFieldIndex: 3,
   line1FieldIndices: [5, 8, 10],
   line2FieldIndices: [6, 7, 9],
@@ -55,11 +59,13 @@ function getProductState(product) {
   const requestedRaw = state.requestedByProductId[product.id] ?? '';
   const requested = requestedRaw === '' ? null : Number(requestedRaw);
   const selected = Boolean(state.selectedByProductId[product.id]);
+  const posologie = state.posologieByProductId[product.id] ?? '';
 
   return {
     requestedRaw,
     requested,
     selected,
+    posologie,
   };
 }
 
@@ -180,6 +186,50 @@ function render() {
     <section class="panel">
       <div class="section-head">
         <div>
+          <p class="eyebrow">Type de demande</p>
+          <h2>Mode</h2>
+        </div>
+      </div>
+      <div class="service-switch">
+        <button
+          type="button"
+          class="service-chip ${state.requestMode === 'renewal' ? 'is-active' : ''}"
+          data-action="switch-mode"
+          data-mode="renewal"
+        >
+          <span>Renouvellement de service</span>
+          <small>Case 1</small>
+        </button>
+        <button
+          type="button"
+          class="service-chip ${state.requestMode === 'nominative' ? 'is-active' : ''}"
+          data-action="switch-mode"
+          data-mode="nominative"
+        >
+          <span>Dotation individuelle</span>
+          <small>Case 3</small>
+        </button>
+      </div>
+      ${state.requestMode === 'nominative' ? `
+        <div class="patient-name-wrap">
+          <label class="patient-name-label">
+            <span>Nom du patient</span>
+            <input
+              type="text"
+              class="patient-name-input"
+              data-action="update-patient-name"
+              value="${escapeHtml(state.patientName)}"
+              placeholder="NOM Prenom"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+      ` : ''}
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
           <p class="eyebrow">Produits</p>
           <h2>${escapeHtml(service.label)}</h2>
         </div>
@@ -217,7 +267,7 @@ function render() {
               productState.requested !== null &&
               (Number.isNaN(productState.requested) ||
                 productState.requested < 0 ||
-                productState.requested > product.totalQuantity);
+                (state.requestMode === 'renewal' && productState.requested > product.totalQuantity));
 
             return `
               <article class="product-row ${productState.selected ? 'is-selected' : ''}">
@@ -233,37 +283,47 @@ function render() {
                   <strong>${escapeHtml(product.label)}</strong>
                   <small>${escapeHtml(product.requestLines.join(' | '))}</small>
                 </div>
-                <div class="pill">${product.totalQuantity} ${escapeHtml(product.unitLabel)}</div>
-                <label class="remaining-input">
-                  <button
-                    type="button"
-                    class="step-button"
-                    data-action="decrement-requested"
-                    data-product-id="${product.id}"
-                    aria-label="Retirer une unite pour ${escapeHtml(product.label)}"
-                  >
-                    -
-                  </button>
+                <div class="pill">${state.requestMode === 'nominative' ? 'Illimitee' : `${product.totalQuantity} ${escapeHtml(product.unitLabel)}`}</div>
+                <div class="command-col">
+                  <label class="remaining-input">
+                    <button
+                      type="button"
+                      class="step-button"
+                      data-action="decrement-requested"
+                      data-product-id="${product.id}"
+                      aria-label="Retirer une unite pour ${escapeHtml(product.label)}"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="${state.requestMode === 'nominative' ? '' : product.totalQuantity}"
+                      step="1"
+                      value="${escapeHtml(productState.requestedRaw)}"
+                      data-action="update-requested"
+                      data-product-id="${product.id}"
+                      aria-label="Quantite commandee pour ${escapeHtml(product.label)}"
+                    />
+                    <button
+                      type="button"
+                      class="step-button"
+                      data-action="increment-requested"
+                      data-product-id="${product.id}"
+                      aria-label="Ajouter une unite pour ${escapeHtml(product.label)}"
+                    >
+                      +
+                    </button>
+                  </label>
                   <input
-                    type="number"
-                    min="0"
-                    max="${product.totalQuantity}"
-                    step="1"
-                    value="${escapeHtml(productState.requestedRaw)}"
-                    data-action="update-requested"
+                    type="text"
+                    class="posologie-input"
+                    placeholder="Posologie..."
+                    data-action="update-posologie"
                     data-product-id="${product.id}"
-                    aria-label="Quantite commandee pour ${escapeHtml(product.label)}"
+                    value="${escapeHtml(productState.posologie)}"
                   />
-                  <button
-                    type="button"
-                    class="step-button"
-                    data-action="increment-requested"
-                    data-product-id="${product.id}"
-                    aria-label="Ajouter une unite pour ${escapeHtml(product.label)}"
-                  >
-                    +
-                  </button>
-                </label>
+                </div>
                 <div class="request-value ${invalid ? 'is-invalid' : ''}">
                   ${
                     invalid
@@ -370,12 +430,12 @@ function sanitizeEntry(product, productState) {
     throw new Error(`La quantite a commander est manquante pour ${product.label}.`);
   }
 
-  if (productState.requested < 0 || productState.requested > product.totalQuantity) {
-    throw new Error(`La quantite commandee pour ${product.label} doit etre comprise entre 0 et ${product.totalQuantity}.`);
-  }
-
   if (productState.requested <= 0) {
     throw new Error(`La quantite commandee pour ${product.label} est nulle. Decoche ce produit ou ajuste la saisie.`);
+  }
+
+  if (state.requestMode === 'renewal' && productState.requested > product.totalQuantity) {
+    throw new Error(`La quantite commandee pour ${product.label} doit etre inferieure ou egale a ${product.totalQuantity}.`);
   }
 }
 
@@ -546,20 +606,26 @@ async function buildRequestPdf(templateBytes, service, entries, dateText) {
   entries.forEach(({ product, state: productState }, blockIndex) => {
     drawFieldText(page, font, line1Rects[blockIndex], product.requestLines[0]);
     drawFieldText(page, font, line2Rects[blockIndex], product.requestLines[1]);
-    drawFieldText(
-      page,
-      boldFont,
-      noteRects[blockIndex],
-      formatRequestedQuantity(productState.requested)
-    );
-    drawFieldText(page, font, totalQuantityRects[blockIndex], String(product.totalQuantity), {
-      size: 10,
-      paddingX: 2,
-      paddingY: 2,
-    });
+    const posologieTrimmed = productState.posologie?.trim();
+    const noteText = posologieTrimmed
+      ? `${formatRequestedQuantity(productState.requested)} — ${posologieTrimmed}`
+      : formatRequestedQuantity(productState.requested);
+    drawFieldText(page, boldFont, noteRects[blockIndex], noteText);
+    if (state.requestMode === 'renewal') {
+      drawFieldText(page, font, totalQuantityRects[blockIndex], String(product.totalQuantity), {
+        size: 10,
+        paddingX: 2,
+        paddingY: 2,
+      });
+    }
   });
 
-  drawCheckMark(page, renewalRect, font);
+  if (state.requestMode === 'nominative') {
+    drawCheckMark(page, nominativeRect, font);
+    drawFieldText(page, font, patientRect, state.patientName);
+  } else {
+    drawCheckMark(page, renewalRect, font);
+  }
   drawFieldText(page, font, serviceRect, service.pdfServiceLabel);
   drawFieldText(page, font, requestDateRect, dateText);
 
@@ -574,7 +640,10 @@ function revokeGeneratedDocs() {
 
 function resetState() {
   revokeGeneratedDocs();
+  state.requestMode = 'renewal';
+  state.patientName = '';
   state.requestedByProductId = {};
+  state.posologieByProductId = {};
   state.selectedByProductId = {};
   state.isGenerating = false;
   state.errorMessage = '';
@@ -593,6 +662,10 @@ async function generateDocuments() {
 
   if (selectedProducts.length === 0) {
     return;
+  }
+
+  if (state.requestMode === 'nominative' && !state.patientName.trim()) {
+    throw new Error('Le nom du patient est obligatoire pour une dotation individuelle.');
   }
 
   selectedProducts.forEach(({ product, state: productState }) => sanitizeEntry(product, productState));
@@ -664,6 +737,16 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  if (action === 'switch-mode') {
+    state.requestMode = target.dataset.mode;
+    state.requestedByProductId = {};
+    state.posologieByProductId = {};
+    state.selectedByProductId = {};
+    resetGeneratedOutput();
+    render();
+    return;
+  }
+
   if (action === 'generate-zip') {
     generateDocuments().catch((error) => {
       state.isGenerating = false;
@@ -723,7 +806,9 @@ document.addEventListener('click', (event) => {
     const currentValue = currentRaw === '' ? 0 : Number(currentRaw);
     const safeValue = Number.isNaN(currentValue) ? 0 : currentValue;
     const delta = action === 'increment-requested' ? 1 : -1;
-    const nextValue = Math.min(product.totalQuantity, Math.max(0, safeValue + delta));
+    const nextValue = state.requestMode === 'nominative'
+      ? Math.max(0, safeValue + delta)
+      : Math.min(product.totalQuantity, Math.max(0, safeValue + delta));
 
     state.requestedByProductId[product.id] = String(nextValue);
     state.selectedByProductId[product.id] = nextValue > 0;
@@ -734,6 +819,16 @@ document.addEventListener('click', (event) => {
 function handleInputStateChange(event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.dataset.action === 'update-patient-name') {
+    state.patientName = target.value;
+    return;
+  }
+
+  if (target.dataset.action === 'update-posologie') {
+    state.posologieByProductId[target.dataset.productId] = target.value;
+    return;
+  }
 
   if (target.dataset.action === 'toggle-product') {
     state.selectedByProductId[target.dataset.productId] = target.checked;

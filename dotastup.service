@@ -1,0 +1,17 @@
+[Unit]
+Description=Dotastup - Interface renouvellement stupéfiants
+After=network.target
+
+[Service]
+Type=simple
+User=alexandre
+WorkingDirectory=/opt/dotastup
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target
